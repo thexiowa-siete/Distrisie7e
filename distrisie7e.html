@@ -151,7 +151,7 @@ cli:{t:'Clientes',
  f:function(){var a=L('clientes').filter(function(c){return match(c,S.q,['nombre','codigo','ruc'])}).sort(function(x,y){return(y.ts||0)-(x.ts||0)}).slice(0,60);
   $('res').innerHTML=a.length?a.map(function(c){return'<div class="it r"><div><b>'+esc(c.nombre)+'</b><div class="mu">'+esc(c.codigo||'')+' · RUC '+esc(c.ruc||'-')+' · '+esc(c.tel||'')+' · '+esc(c.ciudad||'')+(c.ubic?' · <a href="'+esc(c.ubic)+'" target="_blank" rel="noopener">mapa</a>':'')+'</div></div><button class="g w" data-a="ecl" data-id="'+esc(c.id)+'">Editar</button></div>'}).join(''):'<div class="mu">Todavía no hay clientes.</div>'}},
 pro:{t:'Productos',
- h:function(){return'<div class="cd"><h2>Nuevo producto</h2><input id="pc" placeholder="Código"><input id="pn" placeholder="Nombre"><div class="r"><input id="pa" inputmode="numeric" placeholder="Minorista Gs."><input id="pb" inputmode="numeric" placeholder="Mayorista Gs."></div><input id="pj" inputmode="numeric" placeholder="Unidades por caja (opcional)" style="margin-top:8px"><button class="b" data-a="padd" style="width:100%;padding:11px">Guardar producto</button></div><div class="cd"><h2>Importar desde Excel</h2><input id="xl" type="file" accept=".xlsx,.xls,.csv"><div class="mu">Columnas: codigo, nombre, minorista, mayorista, caja. Si ya existe el código, se actualiza.</div></div><input id="q" placeholder="Buscar producto" value="'+esc(S.q)+'"><div id="res" class="cd"></div>'},
+ h:function(){return'<div class="cd"><h2>Nuevo producto</h2><input id="pc" placeholder="Código"><input id="pn" placeholder="Nombre"><div class="r"><input id="pa" inputmode="numeric" placeholder="Minorista Gs."><input id="pb" inputmode="numeric" placeholder="Mayorista Gs."></div><input id="pj" inputmode="numeric" placeholder="Unidades por caja (opcional)" style="margin-top:8px"><button class="b" data-a="padd" style="width:100%;padding:11px">Guardar producto</button></div><div class="cd"><h2>Importar desde Excel</h2><input id="xl" type="file" accept=".xlsx,.xls,.csv"><div class="mu">Lee todas las hojas. Columnas: codigo, nombre o descripcion, precio1 (minorista), precio2 (mayorista), caja (opcional). Si ya existe el código, se actualiza.</div></div><input id="q" placeholder="Buscar producto" value="'+esc(S.q)+'"><div id="res" class="cd"></div>'},
  f:function(){var a=L('productos').filter(function(x){return match(x,S.q,['nombre','codigo'])}).slice(0,60);
   $('res').innerHTML=a.length?a.map(function(x){return'<div class="it r"><div><b>'+esc(x.nombre)+'</b><div class="mu">'+esc(x.codigo||'')+' · min '+gs(x.minorista)+' · may '+gs(x.mayorista)+(x.caja>1?' · caja x'+x.caja:'')+'</div></div><button class="d w" data-a="dpr" data-id="'+esc(x.id)+'">Borrar</button></div>'}).join(''):'<div class="mu">Todavía no hay productos.</div>'}}
 };
@@ -178,14 +178,41 @@ function save(path,id,obj){return api('PUT',path+'/'+id,obj).catch(function(){al
 function imp(f){
   var r=new FileReader();
   r.onload=function(e){
-    var wb=XLSX.read(e.target.result,{type:'array'}),rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''}),o={},n=0;
-    rows.forEach(function(r){
-      var m={};Object.keys(r).forEach(function(k){m[k.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim()]=r[k]});
-      var cod=m.codigo||m.cod||'',nom=m.nombre||m.producto||m.descripcion||'',mi=m.minorista||m['precio minorista']||m.precio||0,ma=m.mayorista||m['precio mayorista']||mi,cj=m.caja||m['unidades por caja']||1;
-      if(!nom)return;var id=slug(cod||nom);o[id]={id:id,codigo:String(cod),nombre:String(nom),minorista:num(mi),mayorista:num(ma),caja:num(cj)||1};n++;
+    var wb=XLSX.read(e.target.result,{type:'array'}),o={},info=[],hd=[];
+    var norm=function(s){return String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'')};
+    var cn=function(v){return typeof v==='number'?v:num(String(v).replace(/[^\d.,-]/g,''))};
+    var isH=function(h){return /^(cod|codigo|code|ref|sku|nombre|descripcion|producto|articulo|detalle|precio|minorista|mayorista|caja|p1|p2)/.test(h)};
+    wb.SheetNames.forEach(function(sn){
+      var rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:''}),hi=-1,i;
+      for(i=0;i<Math.min(rows.length,20);i++){if(rows[i].filter(function(c){return c!==''&&isH(norm(c))}).length>=2){hi=i;break}}
+      if(hi<0){hd.push(sn+': '+rows.slice(0,3).map(function(x){return x.slice(0,6).join(' | ')}).join(' // '));return}
+      var ix={cod:-1,nom:-1,min:-1,may:-1,caj:-1},pr=[];
+      rows[hi].map(norm).forEach(function(h,k){
+        if(!h)return;
+        if(ix.cod<0&&/^(cod|codigo|code|ref|sku|item)/.test(h))ix.cod=k;
+        else if(ix.nom<0&&/(nombre|descripcion|producto|articulo|detalle)/.test(h))ix.nom=k;
+        else if(ix.may<0&&/(mayorista|precio2|^p2$|pmay)/.test(h))ix.may=k;
+        else if(ix.min<0&&/(minorista|precio1|^p1$|pmin|publico)/.test(h))ix.min=k;
+        else if(ix.caj<0&&/(caja|bulto|xcaja)/.test(h))ix.caj=k;
+        else if(/^(precio|pvp|pventa)/.test(h))pr.push(k);
+      });
+      if(ix.min<0&&pr.length)ix.min=pr.shift();
+      if(ix.may<0&&pr.length)ix.may=pr.shift();
+      var nm=function(k){return k<0?'no encontrada':rows[hi][k]};
+      info.push(sn+' → código: '+nm(ix.cod)+' | nombre: '+nm(ix.nom)+' | minorista: '+nm(ix.min)+' | mayorista: '+nm(ix.may));
+      rows.slice(hi+1).forEach(function(r){
+        var nom=ix.nom>=0?String(r[ix.nom]).trim():'';if(!nom)return;
+        var cod=ix.cod>=0?String(r[ix.cod]).trim():'',mi=ix.min>=0?cn(r[ix.min]):0,ma=ix.may>=0?cn(r[ix.may]):0,cj=ix.caj>=0?cn(r[ix.caj]):1;
+        var id=slug(cod||nom),x=o[id]||{id:id,codigo:cod,nombre:nom,minorista:0,mayorista:0,caja:1};
+        if(mi>0)x.minorista=mi;if(ma>0)x.mayorista=ma;if(cj>1)x.caja=cj;
+        o[id]=x;
+      });
     });
-    if(!n){alert('No encontré productos. Las columnas tienen que ser: codigo, nombre, minorista, mayorista, caja.');return}
-    api('PATCH','/productos',o).then(function(){alert('Se cargaron '+n+' productos.')}).catch(function(){alert('No se pudo importar.')});
+    var ks=Object.keys(o),np=0;
+    ks.forEach(function(k){var x=o[k];if(!x.mayorista)x.mayorista=x.minorista;if(!x.minorista)np++});
+    if(!ks.length){alert('No encontré productos.\nLas columnas tienen que llamarse parecido a: codigo, nombre o descripcion, precio1 (minorista), precio2 (mayorista).\n\nLo que vi:\n'+(hd.join('\n')||info.join('\n')));return}
+    if(np===ks.length&&!confirm('Ningún producto tiene precio. Columnas detectadas:\n'+info.join('\n')+'\n\n¿Cargarlos igual?'))return;
+    api('PATCH','/productos',o).then(function(){alert('Se cargaron '+ks.length+' productos'+(np?' ('+np+' sin precio)':'')+'.\n\nColumnas detectadas:\n'+info.join('\n'))}).catch(function(){alert('No se pudo importar.')});
   };
   r.readAsArrayBuffer(f);
 }
