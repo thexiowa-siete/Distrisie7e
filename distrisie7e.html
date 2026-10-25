@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f4c81">
+<title>DistriSie7e</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{--bg:#f3f5f8;--cd:#fff;--bd:#dde3ea;--tx:#1b2430;--mu:#66758a;--ac:#0f4c81;--ok:#15803d;--bad:#b91c1c}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{position:sticky;top:0;z-index:5;background:var(--ac);color:#fff;display:flex;align-items:center;gap:10px;padding:10px 12px;padding-top:calc(10px + env(safe-area-inset-top,0px))}
+header b{flex:1;font-size:17px}header span{font-size:12px;opacity:.85}
+header button{background:none;border:0;color:#fff;font-size:24px;padding:0 6px;cursor:pointer}
+#dr{position:fixed;top:0;bottom:0;left:0;width:78%;max-width:280px;background:var(--cd);z-index:9;box-shadow:2px 0 12px #0004;padding:calc(16px + env(safe-area-inset-top,0px)) 0 16px;overflow:auto}
+#dr[hidden],#sh[hidden],#app[hidden],#lg[hidden]{display:none}
+#dr a{display:block;padding:13px 20px;color:var(--tx);font-size:16px;cursor:pointer}
+#dr a.on{background:#e8f0f8;color:var(--ac);font-weight:600}
+#sh{position:fixed;inset:0;background:#0006;z-index:8}
+main{max-width:640px;margin:0 auto;padding:12px 12px 40px}
+.cd{background:var(--cd);border:1px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:10px}
+input,select,button{font:inherit;color:var(--tx);background:#fff;border:1px solid var(--bd);border-radius:9px;padding:9px;min-width:0}
+input,select{width:100%;margin-bottom:8px}
+.b{background:var(--ac);color:#fff;border:0;font-weight:600;cursor:pointer}
+.g{background:none;color:var(--ac);border:1px solid var(--ac);cursor:pointer}
+.d{background:none;color:var(--bad);border:0;cursor:pointer}
+.r{display:flex;gap:8px;align-items:center}.r>*{flex:1;margin-bottom:0}.r>.w{flex:0 0 auto}
+.it{padding:9px 0;border-top:1px solid var(--bd)}.it:first-child{border:0}
+.mu{color:var(--mu);font-size:12.5px}
+h2{font-size:16px;margin:4px 0 10px}
+.tot{font-size:20px;font-weight:700}
+table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:5px 3px;border-bottom:1px solid var(--bd);text-align:right}td:first-child,th:first-child{text-align:left}
+@media print{header,#dr,#sh,.np{display:none!important}body{background:#fff}.cd{border:0}}
+</style>
+</head>
+<body>
+<div id="lg" class="cd" style="max-width:360px;margin:60px auto">
+  <h2>DistriSie7e</h2>
+  <input id="em" type="text" placeholder="Usuario (ej. admin) o correo" autocomplete="username" autocapitalize="none" autocorrect="off">
+  <input id="pw" type="password" placeholder="Contraseña" autocomplete="current-password">
+  <button class="b" id="go" style="width:100%;padding:11px">Ingresar</button>
+  <div id="le" class="mu" style="color:var(--bad);margin-top:8px"></div>
+</div>
+<div id="app" hidden>
+  <header><button data-a="menu" aria-label="Menú">☰</button><b id="ttl">DistriSie7e</b><span id="st"></span></header>
+  <div id="sh" hidden data-a="menu"></div>
+  <nav id="dr" hidden></nav>
+  <main id="mn"></main>
+</div>
+<script>
+(function(){
+var K='AIzaSyAeXn72DBRVPKaLMF8xzQIVadD05i6W7AE',DB='https://distrisie7e-default-rtdb.firebaseio.com';
+var T={},S={v:'nuevo',q:'',cl:null,cart:[],tier:'min',pv:null,back:'pres',loc:''},A=null,es=null,dirty=0;
+var $=function(i){return document.getElementById(i)};
+var esc=function(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})};
+var gs=function(n){return'Gs. '+Math.round(n||0).toLocaleString('es-PY')};
+var num=function(v){if(typeof v==='number')return v;var n=parseFloat(String(v).replace(/\./g,'').replace(',','.'));return isFinite(n)?n:0};
+var L=function(k){var o=T[k]||{};return Object.keys(o).map(function(i){return o[i]}).filter(Boolean)};
+var fd=function(t){return new Date(t).toLocaleDateString('es-PY')};
+var dk=function(t){var d=new Date(t);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+var slug=function(s){return String(s).trim().replace(/[.#$\/\[\]\s]+/g,'_')||('p'+Date.now())};
+var itemsOf=function(q){var o=q.items||{};return Object.keys(o).map(function(k){return o[k]})};
+var match=function(o,q,ks){q=q.toLowerCase().trim();return !q||ks.some(function(k){return String(o[k]||'').toLowerCase().indexOf(q)>=0})};
+
+/* auth + base de datos (REST) */
+function post(u,b,form){return fetch(u,{method:'POST',headers:{'Content-Type':form?'application/x-www-form-urlencoded':'application/json'},body:form?b:JSON.stringify(b)}).then(function(r){return r.json()})}
+function setA(t,r,e,em){A={tok:t,ref:r,exp:Date.now()+e*1000-60000,email:em||(A&&A.email)||''};try{localStorage.setItem('ds7',JSON.stringify({r:r,e:A.email}))}catch(x){}}
+function refresh(){return post('https://securetoken.googleapis.com/v1/token?key='+K,'grant_type=refresh_token&refresh_token='+encodeURIComponent(A.ref),true).then(function(d){if(d.error)throw d.error;setA(d.id_token,d.refresh_token,d.expires_in)})}
+function tok(){return A.exp>Date.now()?Promise.resolve(A.tok):refresh().then(function(){return A.tok})}
+function api(m,p,b){return tok().then(function(t){return fetch(DB+p+'.json?auth='+t,{method:m,body:b==null?undefined:JSON.stringify(b)})}).then(function(r){if(!r.ok)throw new Error(r.status);return r.json()})}
+function setIn(path,data,merge){
+  var p=path.split('/').filter(Boolean);
+  if(!p.length){if(merge){Object.keys(data||{}).forEach(function(k){if(data[k]===null)delete T[k];else T[k]=data[k]})}else T=data||{};return}
+  var o=T,i;for(i=0;i<p.length-1;i++){if(typeof o[p[i]]!=='object'||o[p[i]]===null)o[p[i]]={};o=o[p[i]]}
+  var k=p[p.length-1];
+  if(data===null)delete o[k];
+  else if(merge&&typeof data==='object'){var t=o[k]=o[k]||{};Object.keys(data).forEach(function(kk){if(data[kk]===null)delete t[kk];else t[kk]=data[kk]})}
+  else o[k]=data;
+}
+function live(){
+  if(es)es.close();
+  tok().then(function(t){
+    es=new EventSource(DB+'/.json?auth='+t);
+    es.addEventListener('put',function(e){var m=JSON.parse(e.data);setIn(m.path,m.data,0);draw()});
+    es.addEventListener('patch',function(e){var m=JSON.parse(e.data);setIn(m.path,m.data,1);draw()});
+    es.onopen=function(){$('st').textContent='en línea'};
+    es.onerror=function(){
+      $('st').textContent='sin conexión';
+      tok().then(function(t){return fetch(DB+'/.json?shallow=true&auth='+t)}).then(function(r){
+        $('st').textContent=r.status===401||r.status===403?'sin permiso: revisar reglas':r.status===404?'base no encontrada':r.ok?'reconectando...':'error '+r.status;
+      }).catch(function(){$('st').textContent='sin internet'});
+    };
+  });
+}
+function draw(){var a=document.activeElement;if(a&&/INPUT|SELECT|TEXTAREA/.test(a.tagName)){dirty=1;return}render()}
+document.addEventListener('focusout',function(){if(dirty){dirty=0;setTimeout(function(){var a=document.activeElement;if(!a||!/INPUT|SELECT|TEXTAREA/.test(a.tagName))render()},60)}});
+
+/* presupuesto */
+function nextNum(){var m=0;L('presupuestos').forEach(function(q){var n=parseInt(String(q.num||'').replace(/\D/g,''),10);if(n>m)m=n});return'P-'+String(m+1).padStart(4,'0')}
+function cartTotal(){return S.cart.reduce(function(s,i){return s+i.sub},0)}
+function doc(q){
+  var c=q.cl||{};
+  return'<div class="cd"><h2 style="margin:0">Distribuidora Sie7e</h2><div class="mu">Presupuesto '+esc(q.num||'(sin guardar)')+' · '+fd(q.ts)+'</div><div style="margin:10px 0"><b>'+esc(c.nombre)+'</b><div class="mu">'+esc(c.codigo||'')+' · RUC '+esc(c.ruc||'-')+' · '+esc(c.tel||'')+' · '+esc(c.ciudad||'')+'</div></div><table><tr><th>Producto</th><th>Cant.</th><th>Precio</th><th>Subtotal</th></tr>'+
+  itemsOf(q).map(function(i){return'<tr><td>'+esc(i.nom)+'</td><td>'+i.cant+' '+(i.und==='c'?'caja':'u')+'</td><td>'+gs(i.precio)+'</td><td>'+gs(i.sub)+'</td></tr>'}).join('')+'</table><div class="tot" style="text-align:right;margin-top:10px">Total: '+gs(q.total)+'</div><div class="mu" style="text-align:right">Precio '+(q.tier==='may'?'mayorista':'minorista')+'</div></div>';
+}
+function waText(q){
+  var c=q.cl||{};
+  return'*Distribuidora Sie7e*\nPresupuesto '+q.num+' - '+fd(q.ts)+'\nCliente: '+c.nombre+(c.ruc?' (RUC '+c.ruc+')':'')+'\n\n'+itemsOf(q).map(function(i){return'- '+i.cant+' '+(i.und==='c'?'caja':'u')+' '+i.nom+' x '+gs(i.precio)+' = '+gs(i.sub)}).join('\n')+'\n\n*Total: '+gs(q.total)+'*';
+}
+
+/* vistas */
+var V={
+nuevo:{t:'Nuevo pedido',
+ h:function(){return'<div class="cd r"><button class="'+(S.tier==='min'?'b':'g')+'" data-a="tier" data-id="min">Minorista</button><button class="'+(S.tier==='may'?'b':'g')+'" data-a="tier" data-id="may">Mayorista</button></div>'+
+  (S.cl?'<div class="cd r"><div><b>'+esc(S.cl.nombre)+'</b><div class="mu">'+esc(S.cl.codigo||'')+' · RUC '+esc(S.cl.ruc||'-')+'</div></div><button class="g w" data-a="chcl">Cambiar</button></div>':'<h2>1. Elegí el cliente</h2>')+
+  '<input id="q" placeholder="'+(S.cl?'Buscar producto por código o nombre':'Buscar cliente por nombre, código o RUC')+'" value="'+esc(S.q)+'" autocomplete="off"><div id="res" class="cd"></div>'+(S.cl?'<div id="cart" class="cd"></div>':'')},
+ f:function(){
+  if(!S.cl){var a=L('clientes').filter(function(c){return match(c,S.q,['nombre','codigo','ruc'])}).slice(0,30);
+   $('res').innerHTML=a.map(function(c){return'<div class="it r"><div><b>'+esc(c.nombre)+'</b><div class="mu">'+esc(c.codigo||'')+' · RUC '+esc(c.ruc||'-')+'</div></div><button class="b w" data-a="pick" data-id="'+esc(c.id)+'">Elegir</button></div>'}).join('')+'<button class="g" data-a="go" data-id="cli" style="width:100%;margin-top:8px">+ Nuevo cliente</button>';return}
+  var p=L('productos').filter(function(x){return match(x,S.q,['nombre','codigo'])}).slice(0,40);
+  $('res').innerHTML=p.length?p.map(function(x){var pr=S.tier==='may'?x.mayorista:x.minorista;return'<div class="it"><b>'+esc(x.nombre)+'</b><div class="mu">'+esc(x.codigo||'')+' · '+gs(pr)+' c/u'+(x.caja>1?' · caja x'+x.caja:'')+'</div><div class="r" style="margin-top:6px"><input id="n_'+esc(x.id)+'" inputmode="numeric" placeholder="Cant." style="flex:0 0 70px"><select id="u_'+esc(x.id)+'"><option value="u">Unidad</option>'+(x.caja>1?'<option value="c">Caja</option>':'')+'</select><button class="b w" data-a="add" data-id="'+esc(x.id)+'">Agregar</button></div></div>'}).join(''):'<div class="mu">No hay productos. Cargalos en el menú Productos.</div>';
+  $('cart').innerHTML=S.cart.length?'<h2>Pedido</h2>'+S.cart.map(function(i,n){return'<div class="it r"><div>'+i.cant+' '+(i.und==='c'?'caja':'u')+' · '+esc(i.nom)+'<div class="mu">'+gs(i.precio)+' c/u = '+gs(i.sub)+'</div></div><button class="d w" data-a="rm" data-id="'+n+'">✕</button></div>'}).join('')+'<div class="tot" style="text-align:right;margin:8px 0">'+gs(cartTotal())+'</div><button class="b" data-a="prev" style="width:100%;padding:11px">Ver presupuesto</button>':'<div class="mu">Todavía no agregaste productos.</div>'}},
+pv:{t:'Presupuesto',
+ h:function(){var q=S.pv,s=q.saved;return doc(q)+'<div class="np">'+(s?'<div class="r"><button class="b" data-a="wa">WhatsApp</button><button class="g" data-a="print">PDF / Imprimir</button></div><div class="r" style="margin-top:8px">'+(q.estado!=='aprobado'?'<button class="b" style="background:var(--ok)" data-a="apr">Aprobar</button>':'<div class="mu">Aprobado</div>')+'<button class="d" data-a="del" data-id="'+esc(q.id)+'">Eliminar</button></div>':'<button class="b" data-a="save" style="width:100%;padding:11px">Guardar presupuesto</button>')+'<button class="g" data-a="go" data-id="'+(s?S.back:'nuevo')+'" style="width:100%;margin-top:8px">Volver</button></div>'},f:function(){}},
+cli:{t:'Clientes',
+ h:function(){return'<div class="cd"><h2>Nuevo cliente</h2><input id="cc" placeholder="Código (automático si lo dejás vacío)"><input id="cn" placeholder="Nombre o razón social"><input id="cr" placeholder="RUC"><input id="ct" inputmode="tel" placeholder="Teléfono"><input id="cy" placeholder="Ciudad"><button class="g" data-a="geo" style="width:100%;margin-bottom:8px">'+(S.loc?'Ubicación guardada ✓':'Usar mi ubicación')+'</button><button class="b" data-a="cadd" style="width:100%;padding:11px">Guardar cliente</button></div><input id="q" placeholder="Buscar por nombre, código o RUC" value="'+esc(S.q)+'"><div id="res" class="cd"></div>'},
+ f:function(){var a=L('clientes').filter(function(c){return match(c,S.q,['nombre','codigo','ruc'])}).sort(function(x,y){return(y.ts||0)-(x.ts||0)}).slice(0,60);
+  $('res').innerHTML=a.length?a.map(function(c){return'<div class="it r"><div><b>'+esc(c.nombre)+'</b><div class="mu">'+esc(c.codigo||'')+' · RUC '+esc(c.ruc||'-')+' · '+esc(c.tel||'')+' · '+esc(c.ciudad||'')+(c.ubic?' · <a href="'+esc(c.ubic)+'" target="_blank" rel="noopener">mapa</a>':'')+'</div></div><button class="d w" data-a="dcl" data-id="'+esc(c.id)+'">Borrar</button></div>'}).join(''):'<div class="mu">Todavía no hay clientes.</div>'}},
+pro:{t:'Productos',
+ h:function(){return'<div class="cd"><h2>Nuevo producto</h2><input id="pc" placeholder="Código"><input id="pn" placeholder="Nombre"><div class="r"><input id="pa" inputmode="numeric" placeholder="Minorista Gs."><input id="pb" inputmode="numeric" placeholder="Mayorista Gs."></div><input id="pj" inputmode="numeric" placeholder="Unidades por caja (opcional)" style="margin-top:8px"><button class="b" data-a="padd" style="width:100%;padding:11px">Guardar producto</button></div><div class="cd"><h2>Importar desde Excel</h2><input id="xl" type="file" accept=".xlsx,.xls,.csv"><div class="mu">Columnas: codigo, nombre, minorista, mayorista, caja. Si ya existe el código, se actualiza.</div></div><input id="q" placeholder="Buscar producto" value="'+esc(S.q)+'"><div id="res" class="cd"></div>'},
+ f:function(){var a=L('productos').filter(function(x){return match(x,S.q,['nombre','codigo'])}).slice(0,60);
+  $('res').innerHTML=a.length?a.map(function(x){return'<div class="it r"><div><b>'+esc(x.nombre)+'</b><div class="mu">'+esc(x.codigo||'')+' · min '+gs(x.minorista)+' · may '+gs(x.mayorista)+(x.caja>1?' · caja x'+x.caja:'')+'</div></div><button class="d w" data-a="dpr" data-id="'+esc(x.id)+'">Borrar</button></div>'}).join(''):'<div class="mu">Todavía no hay productos.</div>'}}
+};
+function listQ(est){return{t:est==='aprobado'?'Aprobados':'Presupuestos',h:function(){return'<div id="res" class="cd"></div>'},f:function(){
+  var a=L('presupuestos').filter(function(q){return(q.estado||'pendiente')===est}).sort(function(x,y){return(y.ts||0)-(x.ts||0)});
+  $('res').innerHTML=a.length?a.map(function(q){return'<div class="it r" data-a="open" data-id="'+esc(q.id)+'" style="cursor:pointer"><div><b>'+esc(q.num)+' · '+esc((q.cl||{}).nombre)+'</b><div class="mu">'+fd(q.ts)+'</div></div><b class="w">'+gs(q.total)+'</b></div>'}).join(''):'<div class="mu">No hay presupuestos '+(est==='aprobado'?'aprobados':'pendientes')+'.</div>'}}}
+V.pres=listQ('pendiente');V.apro=listQ('aprobado');
+function ventas(modo){return{t:modo==='d'?'Ventas diarias':'Ventas totales',h:function(){return'<div id="res" class="cd"></div>'},f:function(){
+  var a=L('presupuestos').filter(function(q){return q.estado==='aprobado'}),g={},tot=0;
+  a.forEach(function(q){var k=modo==='d'?dk(q.aprobado||q.ts):dk(q.aprobado||q.ts).slice(0,7);g[k]=g[k]||{n:0,t:0};g[k].n++;g[k].t+=q.total;tot+=q.total});
+  $('res').innerHTML='<div class="tot">'+gs(tot)+'</div><div class="mu" style="margin-bottom:8px">'+a.length+' ventas aprobadas</div>'+Object.keys(g).sort().reverse().map(function(k){return'<div class="it r"><div>'+(modo==='d'?fd(k+'T12:00:00'):k)+'<div class="mu">'+g[k].n+(g[k].n===1?' venta':' ventas')+'</div></div><b class="w">'+gs(g[k].t)+'</b></div>'}).join('')}}}
+V.vd=ventas('d');V.vt=ventas('t');
+
+function render(){var v=V[S.v];$('ttl').textContent=v.t;$('mn').innerHTML=v.h();if(v.f)v.f();nav()}
+function nav(){
+  var m=[['nuevo','Nuevo pedido'],['pres','Presupuestos'],['apro','Aprobados'],['cli','Clientes'],['pro','Productos'],['vd','Ventas diarias'],['vt','Ventas totales']];
+  $('dr').innerHTML=m.map(function(x){return'<a data-a="go" data-id="'+x[0]+'" class="'+(S.v===x[0]?'on':'')+'">'+x[1]+'</a>'}).join('')+'<a data-a="out" style="color:var(--bad)">Salir</a><div class="mu" style="padding:12px 20px">'+esc(A&&A.email)+'</div>';
+}
+function menu(o){$('dr').hidden=$('sh').hidden=(o===undefined?!$('dr').hidden:!o)}
+function fill(){var v=V[S.v];if(v.f)v.f()}
+
+/* acciones */
+function save(path,id,obj){return api('PUT',path+'/'+id,obj).catch(function(){alert('No se pudo guardar. Revisá la conexión.')})}
+function imp(f){
+  var r=new FileReader();
+  r.onload=function(e){
+    var wb=XLSX.read(e.target.result,{type:'array'}),rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''}),o={},n=0;
+    rows.forEach(function(r){
+      var m={};Object.keys(r).forEach(function(k){m[k.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim()]=r[k]});
+      var cod=m.codigo||m.cod||'',nom=m.nombre||m.producto||m.descripcion||'',mi=m.minorista||m['precio minorista']||m.precio||0,ma=m.mayorista||m['precio mayorista']||mi,cj=m.caja||m['unidades por caja']||1;
+      if(!nom)return;var id=slug(cod||nom);o[id]={id:id,codigo:String(cod),nombre:String(nom),minorista:num(mi),mayorista:num(ma),caja:num(cj)||1};n++;
+    });
+    if(!n){alert('No encontré productos. Las columnas tienen que ser: codigo, nombre, minorista, mayorista, caja.');return}
+    api('PATCH','/productos',o).then(function(){alert('Se cargaron '+n+' productos.')}).catch(function(){alert('No se pudo importar.')});
+  };
+  r.readAsArrayBuffer(f);
+}
+document.addEventListener('change',function(e){if(e.target.id==='xl'&&e.target.files[0])imp(e.target.files[0])});
+document.addEventListener('input',function(e){if(e.target.id==='q'){S.q=e.target.value;fill()}});
+document.addEventListener('click',function(e){
+  var el=e.target.closest('[data-a]');if(!el)return;
+  var a=el.getAttribute('data-a'),id=el.getAttribute('data-id'),q;
+  if(a==='menu')menu();
+  else if(a==='go'){S.v=id;S.q='';menu(false);render()}
+  else if(a==='tier'){S.tier=id;render()}
+  else if(a==='pick'){S.cl=T.clientes[id];S.q='';render()}
+  else if(a==='chcl'){S.cl=null;S.q='';render()}
+  else if(a==='add'){
+    var x=T.productos[id],n=num($('n_'+id).value),u=$('u_'+id).value;if(!n){$('n_'+id).focus();return}
+    var pu=(S.tier==='may'?x.mayorista:x.minorista),pr=u==='c'?pu*(x.caja||1):pu;
+    S.cart.push({cod:x.codigo,nom:x.nombre+(u==='c'?' (caja x'+x.caja+')':''),cant:n,und:u,precio:pr,sub:pr*n});fill();
+  }
+  else if(a==='rm'){S.cart.splice(+id,1);fill()}
+  else if(a==='prev'){S.pv={cl:S.cl,items:S.cart.slice(),total:cartTotal(),tier:S.tier,ts:Date.now(),estado:'pendiente',saved:false};S.v='pv';render()}
+  else if(a==='save'){
+    q=S.pv;q.num=nextNum();q.id='q'+q.ts;
+    var o=Object.assign({},q);delete o.saved;
+    save('/presupuestos',q.id,o).then(function(){q.saved=true;S.cart=[];S.cl=null;S.back='pres';render()});
+  }
+  else if(a==='open'){S.pv=Object.assign({},T.presupuestos[id],{saved:true});S.back=S.v;S.v='pv';render()}
+  else if(a==='wa'){
+    q=S.pv;var d=String((q.cl||{}).tel||'').replace(/\D/g,'');if(d[0]==='0')d='595'+d.slice(1);
+    window.open('https://wa.me/'+d+'?text='+encodeURIComponent(waText(q)),'_blank');
+  }
+  else if(a==='print')window.print();
+  else if(a==='apr'){api('PATCH','/presupuestos/'+S.pv.id,{estado:'aprobado',aprobado:Date.now()}).then(function(){S.pv.estado='aprobado';render()}).catch(function(){alert('No se pudo aprobar.')})}
+  else if(a==='del'){if(confirm('¿Eliminar este presupuesto?'))api('DELETE','/presupuestos/'+id).then(function(){S.v=S.back;render()})}
+  else if(a==='geo'){navigator.geolocation.getCurrentPosition(function(p){S.loc='https://maps.google.com/?q='+p.coords.latitude+','+p.coords.longitude;el.textContent='Ubicación guardada ✓'},function(){alert('No pude obtener la ubicación. Revisá el permiso del navegador.')})}
+  else if(a==='cadd'){
+    var nm=$('cn').value.trim();if(!nm){$('cn').focus();return}
+    var cid='c'+Date.now(),cod=$('cc').value.trim()||('C-'+String(L('clientes').length+1).padStart(3,'0'));
+    save('/clientes',cid,{id:cid,codigo:cod,nombre:nm,ruc:$('cr').value.trim(),tel:$('ct').value.trim(),ciudad:$('cy').value.trim(),ubic:S.loc,ts:Date.now()}).then(function(){S.loc='';render()});
+  }
+  else if(a==='padd'){
+    var pn=$('pn').value.trim();if(!pn){$('pn').focus();return}
+    var pc=$('pc').value.trim(),pid=slug(pc||pn),mi=num($('pa').value);
+    save('/productos',pid,{id:pid,codigo:pc,nombre:pn,minorista:mi,mayorista:num($('pb').value)||mi,caja:num($('pj').value)||1}).then(render);
+  }
+  else if(a==='dcl'){if(confirm('¿Borrar este cliente?'))api('DELETE','/clientes/'+id)}
+  else if(a==='dpr'){if(confirm('¿Borrar este producto?'))api('DELETE','/productos/'+id)}
+  else if(a==='out'){try{localStorage.removeItem('ds7')}catch(x){}location.reload()}
+});
+
+/* login */
+function start(){$('lg').hidden=true;$('app').hidden=false;render();live();setInterval(function(){refresh().then(live).catch(function(){})},45*60000)}
+$('go').onclick=function(){
+  var em=$('em').value.trim().toLowerCase(),pw=$('pw').value;if(em&&em.indexOf('@')<0)em+='@distrisie7e.com';$('le').textContent='';
+  if(!em||!pw){$('le').textContent='Completá correo y contraseña.';return}
+  post('https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key='+K,{email:em,password:pw,returnSecureToken:true}).then(function(d){
+    if(d.error){var m=d.error.message||'';$('le').textContent=/OPERATION_NOT_ALLOWED/.test(m)?'Falta activar "Correo y contraseña" en Authentication de Firebase.':/INVALID|NOT_FOUND|PASSWORD/.test(m)?'Correo o contraseña incorrectos.':'No se pudo ingresar ('+m+').';return}
+    setA(d.idToken,d.refreshToken,+d.expiresIn,em);start();
+  }).catch(function(e){$('le').textContent='No se pudo conectar con Firebase ('+(e&&e.message||'error')+'). Revisá tu internet. Si abriste el archivo desde WhatsApp o Archivos, subilo a Freebuff y abrilo desde ahí.'});
+};
+$('pw').addEventListener('keydown',function(e){if(e.key==='Enter')$('go').click()});
+try{var s=JSON.parse(localStorage.getItem('ds7')||'null');if(s&&s.r){A={ref:s.r,exp:0,email:s.e};refresh().then(start).catch(function(){A=null})}}catch(x){}
+})();
+</script>
+</body>
+</html>
