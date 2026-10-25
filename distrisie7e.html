@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#0f4c81">
 <title>DistriSie7e</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 :root{--bg:#f3f5f8;--cd:#fff;--bd:#dde3ea;--tx:#1b2430;--mu:#66758a;--ac:#0f4c81;--ok:#15803d;--bad:#b91c1c}
 *{box-sizing:border-box}
@@ -51,7 +52,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:5px 3px;b
 <script>
 (function(){
 var K='AIzaSyAeXn72DBRVPKaLMF8xzQIVadD05i6W7AE',DB='https://distrisie7e-default-rtdb.firebaseio.com';
-var T={},S={v:'nuevo',q:'',cl:null,cart:[],tier:'min',pv:null,back:'pres',loc:''},A=null,es=null,dirty=0;
+var T={},S={v:'nuevo',q:'',cl:null,cart:[],tier:'min',pv:null,back:'pres',loc:'',edit:null},A=null,es=null,dirty=0;
 var $=function(i){return document.getElementById(i)};
 var esc=function(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})};
 var gs=function(n){return'Gs. '+Math.round(n||0).toLocaleString('es-PY')};
@@ -93,7 +94,7 @@ function live(){
     };
   });
 }
-function draw(){var a=document.activeElement;if(a&&/INPUT|SELECT|TEXTAREA/.test(a.tagName)){dirty=1;return}render()}
+function draw(){if(S.v==='cli'||S.v==='pro'){fill();return}var a=document.activeElement;if(a&&/INPUT|SELECT|TEXTAREA/.test(a.tagName)){dirty=1;return}render()}
 document.addEventListener('focusout',function(){if(dirty){dirty=0;setTimeout(function(){var a=document.activeElement;if(!a||!/INPUT|SELECT|TEXTAREA/.test(a.tagName))render()},60)}});
 
 /* presupuesto */
@@ -109,6 +110,27 @@ function waText(q){
   return'*Distribuidora Sie7e*\nPresupuesto '+q.num+' - '+fd(q.ts)+'\nCliente: '+c.nombre+(c.ruc?' (RUC '+c.ruc+')':'')+'\n\n'+itemsOf(q).map(function(i){return'- '+i.cant+' '+(i.und==='c'?'caja':'u')+' '+i.nom+' x '+gs(i.precio)+' = '+gs(i.sub)}).join('\n')+'\n\n*Total: '+gs(q.total)+'*';
 }
 
+function makePDF(q){
+  var J=window.jspdf.jsPDF,p=new J({unit:'mm',format:'a4'}),c=q.cl||{},y=18;
+  p.setFont('helvetica','bold');p.setFontSize(16);p.text('Distribuidora Sie7e',14,y);
+  p.setFont('helvetica','normal');p.setFontSize(10);y+=7;p.text('Presupuesto '+q.num+'   Fecha: '+fd(q.ts),14,y);
+  y+=8;p.setFont('helvetica','bold');p.text('Cliente: '+(c.nombre||''),14,y);p.setFont('helvetica','normal');
+  y+=5;p.text('RUC: '+(c.ruc||'-')+'   Tel: '+(c.tel||'-')+'   Ciudad: '+(c.ciudad||'-'),14,y);
+  y+=5;p.text('Lista de precios: '+(q.tier==='may'?'mayorista':'minorista'),14,y);y+=9;
+  function head(){p.setFont('helvetica','bold');p.setFillColor(15,76,129);p.rect(14,y-4.5,182,7,'F');p.setTextColor(255);p.text('Producto',16,y);p.text('Cant.',112,y,{align:'right'});p.text('Precio',150,y,{align:'right'});p.text('Subtotal',194,y,{align:'right'});p.setTextColor(0);p.setFont('helvetica','normal');y+=7}
+  head();
+  itemsOf(q).forEach(function(i){
+    var ls=p.splitTextToSize(String(i.nom),88),h=ls.length*4.6+2;
+    if(y+h>275){p.addPage();y=18;head()}
+    p.text(ls,16,y);p.text(i.cant+' '+(i.und==='c'?'caja':'u'),112,y,{align:'right'});p.text(gs(i.precio),150,y,{align:'right'});p.text(gs(i.sub),194,y,{align:'right'});
+    y+=h;p.setDrawColor(221,221,221);p.line(14,y-3,196,y-3);
+  });
+  if(y>265){p.addPage();y=18}
+  y+=5;p.setFont('helvetica','bold');p.setFontSize(12);p.text('TOTAL: '+gs(q.total),194,y,{align:'right'});
+  return p.output('blob');
+}
+function dl(bl,nm){var u=URL.createObjectURL(bl),a=document.createElement('a');a.href=u;a.download=nm;document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(u)},4000)}
+
 /* vistas */
 var V={
 nuevo:{t:'Nuevo pedido',
@@ -122,11 +144,12 @@ nuevo:{t:'Nuevo pedido',
   $('res').innerHTML=p.length?p.map(function(x){var pr=S.tier==='may'?x.mayorista:x.minorista;return'<div class="it"><b>'+esc(x.nombre)+'</b><div class="mu">'+esc(x.codigo||'')+' · '+gs(pr)+' c/u'+(x.caja>1?' · caja x'+x.caja:'')+'</div><div class="r" style="margin-top:6px"><input id="n_'+esc(x.id)+'" inputmode="numeric" placeholder="Cant." style="flex:0 0 70px"><select id="u_'+esc(x.id)+'"><option value="u">Unidad</option>'+(x.caja>1?'<option value="c">Caja</option>':'')+'</select><button class="b w" data-a="add" data-id="'+esc(x.id)+'">Agregar</button></div></div>'}).join(''):'<div class="mu">No hay productos. Cargalos en el menú Productos.</div>';
   $('cart').innerHTML=S.cart.length?'<h2>Pedido</h2>'+S.cart.map(function(i,n){return'<div class="it r"><div>'+i.cant+' '+(i.und==='c'?'caja':'u')+' · '+esc(i.nom)+'<div class="mu">'+gs(i.precio)+' c/u = '+gs(i.sub)+'</div></div><button class="d w" data-a="rm" data-id="'+n+'">✕</button></div>'}).join('')+'<div class="tot" style="text-align:right;margin:8px 0">'+gs(cartTotal())+'</div><button class="b" data-a="prev" style="width:100%;padding:11px">Ver presupuesto</button>':'<div class="mu">Todavía no agregaste productos.</div>'}},
 pv:{t:'Presupuesto',
- h:function(){var q=S.pv,s=q.saved;return doc(q)+'<div class="np">'+(s?'<div class="r"><button class="b" data-a="wa">WhatsApp</button><button class="g" data-a="print">PDF / Imprimir</button></div><div class="r" style="margin-top:8px">'+(q.estado!=='aprobado'?'<button class="b" style="background:var(--ok)" data-a="apr">Aprobar</button>':'<div class="mu">Aprobado</div>')+'<button class="d" data-a="del" data-id="'+esc(q.id)+'">Eliminar</button></div>':'<button class="b" data-a="save" style="width:100%;padding:11px">Guardar presupuesto</button>')+'<button class="g" data-a="go" data-id="'+(s?S.back:'nuevo')+'" style="width:100%;margin-top:8px">Volver</button></div>'},f:function(){}},
+ h:function(){var q=S.pv,s=q.saved;return doc(q)+'<div class="np">'+(s?'<div class="r"><button class="b" data-a="wa">Enviar PDF por WhatsApp</button><button class="g" data-a="pdf">Descargar PDF</button></div><div class="mu" id="pm" style="margin-top:6px"></div><div class="r" style="margin-top:8px">'+(q.estado!=='aprobado'?'<button class="b" style="background:var(--ok)" data-a="apr">Aprobar</button>':'<div class="mu">Aprobado</div>')+'<button class="d" data-a="del" data-id="'+esc(q.id)+'">Eliminar</button></div>':'<button class="b" data-a="save" style="width:100%;padding:11px">Guardar presupuesto</button>')+'<button class="g" data-a="go" data-id="'+(s?S.back:'nuevo')+'" style="width:100%;margin-top:8px">Volver</button></div>'},f:function(){}},
 cli:{t:'Clientes',
- h:function(){return'<div class="cd"><h2>Nuevo cliente</h2><input id="cc" placeholder="Código (automático si lo dejás vacío)"><input id="cn" placeholder="Nombre o razón social"><input id="cr" placeholder="RUC"><input id="ct" inputmode="tel" placeholder="Teléfono"><input id="cy" placeholder="Ciudad"><button class="g" data-a="geo" style="width:100%;margin-bottom:8px">'+(S.loc?'Ubicación guardada ✓':'Usar mi ubicación')+'</button><button class="b" data-a="cadd" style="width:100%;padding:11px">Guardar cliente</button></div><input id="q" placeholder="Buscar por nombre, código o RUC" value="'+esc(S.q)+'"><div id="res" class="cd"></div>'},
+ h:function(){var e=S.edit?T.clientes[S.edit]:null,g=function(k){return esc(e?e[k]||'':'')};
+  return'<div class="cd"><h2>'+(e?'Editar cliente':'Nuevo cliente')+'</h2><input id="cc" placeholder="Código (automático si lo dejás vacío)" value="'+g('codigo')+'"><input id="cn" placeholder="Nombre o razón social" value="'+g('nombre')+'"><input id="cr" placeholder="RUC" value="'+g('ruc')+'"><input id="ct" inputmode="tel" placeholder="Teléfono" value="'+g('tel')+'"><input id="cy" placeholder="Ciudad" value="'+g('ciudad')+'"><button class="g" data-a="geo" style="width:100%;margin-bottom:8px">'+(S.loc?'Ubicación guardada ✓':'Usar mi ubicación')+'</button><button class="b" data-a="cadd" style="width:100%;padding:11px">'+(e?'Guardar cambios':'Guardar y crear presupuesto')+'</button>'+(e?'<button class="g" data-a="cx" style="width:100%;margin-top:8px">Cancelar</button>':'')+'</div><input id="q" placeholder="Buscar por nombre, código o RUC" value="'+esc(S.q)+'"><div id="res" class="cd"></div>'},
  f:function(){var a=L('clientes').filter(function(c){return match(c,S.q,['nombre','codigo','ruc'])}).sort(function(x,y){return(y.ts||0)-(x.ts||0)}).slice(0,60);
-  $('res').innerHTML=a.length?a.map(function(c){return'<div class="it r"><div><b>'+esc(c.nombre)+'</b><div class="mu">'+esc(c.codigo||'')+' · RUC '+esc(c.ruc||'-')+' · '+esc(c.tel||'')+' · '+esc(c.ciudad||'')+(c.ubic?' · <a href="'+esc(c.ubic)+'" target="_blank" rel="noopener">mapa</a>':'')+'</div></div><button class="d w" data-a="dcl" data-id="'+esc(c.id)+'">Borrar</button></div>'}).join(''):'<div class="mu">Todavía no hay clientes.</div>'}},
+  $('res').innerHTML=a.length?a.map(function(c){return'<div class="it r"><div><b>'+esc(c.nombre)+'</b><div class="mu">'+esc(c.codigo||'')+' · RUC '+esc(c.ruc||'-')+' · '+esc(c.tel||'')+' · '+esc(c.ciudad||'')+(c.ubic?' · <a href="'+esc(c.ubic)+'" target="_blank" rel="noopener">mapa</a>':'')+'</div></div><button class="g w" data-a="ecl" data-id="'+esc(c.id)+'">Editar</button></div>'}).join(''):'<div class="mu">Todavía no hay clientes.</div>'}},
 pro:{t:'Productos',
  h:function(){return'<div class="cd"><h2>Nuevo producto</h2><input id="pc" placeholder="Código"><input id="pn" placeholder="Nombre"><div class="r"><input id="pa" inputmode="numeric" placeholder="Minorista Gs."><input id="pb" inputmode="numeric" placeholder="Mayorista Gs."></div><input id="pj" inputmode="numeric" placeholder="Unidades por caja (opcional)" style="margin-top:8px"><button class="b" data-a="padd" style="width:100%;padding:11px">Guardar producto</button></div><div class="cd"><h2>Importar desde Excel</h2><input id="xl" type="file" accept=".xlsx,.xls,.csv"><div class="mu">Columnas: codigo, nombre, minorista, mayorista, caja. Si ya existe el código, se actualiza.</div></div><input id="q" placeholder="Buscar producto" value="'+esc(S.q)+'"><div id="res" class="cd"></div>'},
  f:function(){var a=L('productos').filter(function(x){return match(x,S.q,['nombre','codigo'])}).slice(0,60);
@@ -172,7 +195,7 @@ document.addEventListener('click',function(e){
   var el=e.target.closest('[data-a]');if(!el)return;
   var a=el.getAttribute('data-a'),id=el.getAttribute('data-id'),q;
   if(a==='menu')menu();
-  else if(a==='go'){S.v=id;S.q='';menu(false);render()}
+  else if(a==='go'){S.v=id;S.q='';S.edit=null;S.loc='';menu(false);render()}
   else if(a==='tier'){S.tier=id;render()}
   else if(a==='pick'){S.cl=T.clientes[id];S.q='';render()}
   else if(a==='chcl'){S.cl=null;S.q='';render()}
@@ -190,24 +213,35 @@ document.addEventListener('click',function(e){
   }
   else if(a==='open'){S.pv=Object.assign({},T.presupuestos[id],{saved:true});S.back=S.v;S.v='pv';render()}
   else if(a==='wa'){
-    q=S.pv;var d=String((q.cl||{}).tel||'').replace(/\D/g,'');if(d[0]==='0')d='595'+d.slice(1);
-    window.open('https://wa.me/'+d+'?text='+encodeURIComponent(waText(q)),'_blank');
+    q=S.pv;var bl=makePDF(q),nm='Presupuesto-'+q.num+'.pdf',f=new File([bl],nm,{type:'application/pdf'});
+    if(navigator.canShare&&navigator.canShare({files:[f]})){
+      navigator.share({files:[f],title:'Presupuesto '+q.num,text:'Presupuesto '+q.num+' - Distribuidora Sie7e'}).catch(function(){});
+    }else{
+      dl(bl,nm);var d=String((q.cl||{}).tel||'').replace(/\D/g,'');if(d[0]==='0')d='595'+d.slice(1);
+      window.open('https://wa.me/'+d+'?text='+encodeURIComponent('Te envío el presupuesto '+q.num+' en PDF.'),'_blank');
+      $('pm').textContent='El PDF se descargó. Adjuntalo en el chat de WhatsApp que se abrió.';
+    }
   }
-  else if(a==='print')window.print();
+  else if(a==='pdf')dl(makePDF(S.pv),'Presupuesto-'+S.pv.num+'.pdf');
   else if(a==='apr'){api('PATCH','/presupuestos/'+S.pv.id,{estado:'aprobado',aprobado:Date.now()}).then(function(){S.pv.estado='aprobado';render()}).catch(function(){alert('No se pudo aprobar.')})}
   else if(a==='del'){if(confirm('¿Eliminar este presupuesto?'))api('DELETE','/presupuestos/'+id).then(function(){S.v=S.back;render()})}
   else if(a==='geo'){navigator.geolocation.getCurrentPosition(function(p){S.loc='https://maps.google.com/?q='+p.coords.latitude+','+p.coords.longitude;el.textContent='Ubicación guardada ✓'},function(){alert('No pude obtener la ubicación. Revisá el permiso del navegador.')})}
+  else if(a==='ecl'){S.edit=id;S.loc=(T.clientes[id]||{}).ubic||'';S.q='';render();window.scrollTo(0,0)}
+  else if(a==='cx'){S.edit=null;S.loc='';render()}
   else if(a==='cadd'){
     var nm=$('cn').value.trim();if(!nm){$('cn').focus();return}
-    var cid='c'+Date.now(),cod=$('cc').value.trim()||('C-'+String(L('clientes').length+1).padStart(3,'0'));
-    save('/clientes',cid,{id:cid,codigo:cod,nombre:nm,ruc:$('cr').value.trim(),tel:$('ct').value.trim(),ciudad:$('cy').value.trim(),ubic:S.loc,ts:Date.now()}).then(function(){S.loc='';render()});
+    var old=S.edit?T.clientes[S.edit]:null,cid=old?old.id:'c'+Date.now(),cod=$('cc').value.trim()||(old?old.codigo:'C-'+String(L('clientes').length+1).padStart(3,'0'));
+    var ob={id:cid,codigo:cod,nombre:nm,ruc:$('cr').value.trim(),tel:$('ct').value.trim(),ciudad:$('cy').value.trim(),ubic:S.loc||(old&&old.ubic)||'',ts:old?old.ts:Date.now()};
+    save('/clientes',cid,ob).then(function(){
+      T.clientes=T.clientes||{};T.clientes[cid]=ob;S.loc='';S.q='';
+      if(old){S.edit=null;render()}else{S.cl=ob;S.v='nuevo';render()}
+    });
   }
   else if(a==='padd'){
     var pn=$('pn').value.trim();if(!pn){$('pn').focus();return}
     var pc=$('pc').value.trim(),pid=slug(pc||pn),mi=num($('pa').value);
     save('/productos',pid,{id:pid,codigo:pc,nombre:pn,minorista:mi,mayorista:num($('pb').value)||mi,caja:num($('pj').value)||1}).then(render);
   }
-  else if(a==='dcl'){if(confirm('¿Borrar este cliente?'))api('DELETE','/clientes/'+id)}
   else if(a==='dpr'){if(confirm('¿Borrar este producto?'))api('DELETE','/productos/'+id)}
   else if(a==='out'){try{localStorage.removeItem('ds7')}catch(x){}location.reload()}
 });
